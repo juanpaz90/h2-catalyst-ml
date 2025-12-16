@@ -3,9 +3,23 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 name = "pypi"
 
-[packages]
-
 [dev-packages]
+pytest = "*"
+pytest-cov = "*"
+pytest-bdd = "*"
+pytest-mock = "*"
+pylint = "*"
+coverage = "*"
+autopep8 = "*"
+
+[packages]
+python-dotenv = "==0.19.2"
+safety = "*"
+requests = "*"
+jsonschema = "*"
+pandas = "*"
+seaborn = "*"
+numpy = "*"
 
 [requires]
-python_version = "3.13"
+python_version = "3.12"
