@@ -20,6 +20,11 @@ jsonschema = "*"
 pandas = "*"
 seaborn = "*"
 numpy = "*"
+lmdb = "*"
+torch = "*"
+scikit-learn = "*"
+matplotlib = "*"
+torch-geometric = "*"
 
 [requires]
 python_version = "3.12"
