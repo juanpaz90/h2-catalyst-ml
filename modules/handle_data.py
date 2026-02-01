@@ -66,7 +66,8 @@ def load_df_data(db_path: str, num_samples):
     df = pd.DataFrame(data_items)
     return df
 
-## PYTORCH TENSOR
+# PYTORCH TENSOR WHIOUT ANY VALIDATION
+# HERE I TRUST THAT I AM USING THE LATEST AND GREATEST VERSION OF PYTORCH GEOMETRIC
 def load_ocp_dataset(db_path: str, num_samples=None):
     """
     Loads OCP data from LMDB and returns a list of PyTorch Geometric Data objects.

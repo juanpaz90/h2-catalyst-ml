@@ -1,3 +1,6 @@
+# EDA
+# STEP 2: Chemical & Distribution Analysis
+# --------
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -13,7 +16,7 @@ def get_symbol(atomic_num):
         return f"Unk-{atomic_num}"
 
 
-def perform_chemical_eda(dataset_df):
+def perform_chemical_eda(pt_tensor):
     """
     Performs EDA on a list of PyTorch Geometric Data objects,
     generating four separate, high-resolution plots.
@@ -24,9 +27,9 @@ def perform_chemical_eda(dataset_df):
     tag_counts = Counter()
     unique_elements_found = set()
 
-    print(f"Analyzing {len(dataset_df)} systems...")
+    print(f"Analyzing {len(pt_tensor)} systems...")
 
-    for data in dataset_df:
+    for data in pt_tensor:
         # Compatibility check for tensor extraction
         if hasattr(data, 'atomic_numbers'):
             atomic_numbers = data.atomic_numbers
