@@ -25,6 +25,7 @@ torch = "*"
 scikit-learn = "*"
 matplotlib = "*"
 torch-geometric = "*"
+ase = "*"
 
 [requires]
 python_version = "3.12"
