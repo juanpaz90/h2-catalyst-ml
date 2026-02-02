@@ -93,7 +93,7 @@ def visualize_and_compare_relaxations(dataset, num_samples: int):
         sid = getattr(data, 'sid', 'Unknown')
         if torch.is_tensor(sid): sid = sid.item()
         
-        fig.suptitle(f"System ID: {sid} | Formula: {atoms_init.get_chemical_formula()} | Ads Shift: {avg_shift:.2f} Å", fontsize=16)
+        fig.suptitle(f"Row ID: {idx} | System ID: {sid} | Formula: {atoms_init.get_chemical_formula()} | Ads Shift: {avg_shift:.2f} Å", fontsize=16)
 
         # PLOT 1: Initial State (Top-down view)
         # Use existing logic or custom colors if tags exist
