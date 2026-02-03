@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from torch_geometric.loader import DataLoader
 
+
 def plot_training_curves(train_maes, val_maes):
     """
     Plots the Training and Validation MAE over epochs.
@@ -13,15 +14,16 @@ def plot_training_curves(train_maes, val_maes):
     epochs = range(1, len(train_maes) + 1)
     
     plt.plot(epochs, train_maes, 'o-', label='Train MAE', color='#1f77b4', linewidth=2)
-    plt.plot(epochs, val_maes, 's-', label='Val MAE', color='#ff7f0e', linewidth=2)
+    plt.plot(epochs, val_maes, 's-', label='Validation MAE', color='#ff7f0e', linewidth=2)
     
-    plt.title('GNN Training Progress: Mean Absolute Error over Epochs', fontsize=14)
+    plt.title('Learning curves - Mean Absolute Error over Epochs', fontsize=14)
     plt.xlabel('Epochs', fontsize=12)
     plt.ylabel('MAE (electron volts eV)', fontsize=12)
     plt.legend()
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.tight_layout()
     plt.show()
+    
 
 def get_predictions_and_targets(model, loader, device, predict_fn, mean_energy=-1.54):
     """
@@ -48,6 +50,7 @@ def get_predictions_and_targets(model, loader, device, predict_fn, mean_energy=-
             
     return np.array(all_preds), np.array(all_targets)
 
+
 def plot_parity_results(preds, targets, title="Parity Plot"):
     """
     Generates a Parity Plot (Predicted vs Ground Truth).
@@ -72,6 +75,7 @@ def plot_parity_results(preds, targets, title="Parity Plot"):
     plt.tight_layout()
     plt.show()
 
+
 def plot_error_distribution(preds, targets):
     """
     Visualizes the distribution of absolute errors.
@@ -91,6 +95,7 @@ def plot_error_distribution(preds, targets):
     plt.legend()
     plt.grid(axis='y', alpha=0.3)
     plt.show()
+
 
 def summarize_model_metrics(preds, targets, set_name="Validation"):
     """
