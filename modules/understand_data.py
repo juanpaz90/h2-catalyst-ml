@@ -9,6 +9,7 @@ from ase.visualize.plot import plot_atoms
 from ase.data import chemical_symbols
 from ase.data.colors import jmol_colors
 from torch_geometric.data import Data
+from modules.data_integrity import fix_pyg_data
 
 
 def get_lmdb_sample(lmdb_path, index):
@@ -36,21 +37,7 @@ def get_lmdb_sample(lmdb_path, index):
             
         data_obj = pickle.loads(data_bytes)
 
-    # --- Compatibility Fix for Legacy PyG Data ---
-    # The OCP dataset may contain objects created with older torch_geometric versions.
-    # These objects lack the '_store' attribute required by newer PyG versions (2.0+),
-    # causing RuntimeErrors on access (e.g., in __len__ or __getattr__).
-    if hasattr(data_obj, "__dict__") and "_store" not in data_obj.__dict__:
-        # Create a new, modern Data object
-        new_data = Data()
-        # Transfer all attributes from the legacy object's dictionary to the new object
-        for key, value in data_obj.__dict__.items():
-            if value is not None:
-                # setattr correctly routes tensors to the new storage mechanism
-                setattr(new_data, key, value)
-        return new_data
-            
-    return data_obj
+    return fix_pyg_data(data_obj)
 
 
 def ocp_to_ase(data):

@@ -83,9 +83,7 @@ def perform_geometric_eda(pt_tensor):
     print(f"Longest Detected Bond: {np.max(all_edge_distances):.2f} Å")
     print(f"Global Average Neighbors: {np.mean(avg_degrees):.2f} per atom")
     
-    print("\n--- Insights for Model Configuration ---")
+    print("\n---> Insights for Model Configuration ---")
     print(f"1. Cutoff Suggestion: Your longest edge is {np.max(all_edge_distances):.2f}Å.")
-    print("   If you set your model's cutoff below this value, you will lose connectivity")
-    print("   already present in the dataset.")
     print(f"2. Graph Density: On average, each atom is connected to {np.mean(avg_degrees):.1f} others.")
     print("   High connectivity increases the number of message-passing operations.")

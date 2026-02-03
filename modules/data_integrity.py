@@ -13,6 +13,8 @@ from torch_geometric.data import Data
 def fix_pyg_data(data_object):
     """
     Solves legacy PyG compatibility issues by reconstructing the Data object.
+    The OCP dataset may contain objects created with older torch_geometric versions.
+    These objects lack the '_store' attribute required by newer PyG versions (2.0+)
     
     Parameters:
     data_object: The object loaded via pickle.
@@ -108,22 +110,22 @@ def load_and_validate_dataset(db_path, num_samples=None):
     print(f"Successfully loaded {len(data_list)} validated samples.")
     return data_list
 
-def check_structural_integrity(data_list):
-    """
-    Verifies that the tensors are in the correct format for OCP tasks.
-    """
-    if not data_list:
-        print("Dataset is empty.")
-        return False
+# def check_structural_integrity(data_list):
+#     """
+#     Verifies that the tensors are in the correct format for OCP tasks.
+#     """
+#     if not data_list:
+#         print("Dataset is empty.")
+#         return False
         
-    sample = data_list[0]
-    required_keys = ['pos', 'atomic_numbers', 'tags', 'edge_index']
+#     sample = data_list[0]
+#     required_keys = ['pos', 'atomic_numbers', 'tags', 'edge_index']
     
-    missing = [k for k in required_keys if not hasattr(sample, k)]
+#     missing = [k for k in required_keys if not hasattr(sample, k)]
     
-    if missing:
-        print(f"Structural Integrity Failed: Missing keys {missing}")
-        return False
+#     if missing:
+#         print(f"Structural Integrity Failed: Missing keys {missing}")
+#         return False
         
-    print("Structural Integrity Passed: All OCP core tensors found and fixed.")
-    return True
+#     print("Structural Integrity Passed: All OCP core tensors found and fixed.")
+#     return True

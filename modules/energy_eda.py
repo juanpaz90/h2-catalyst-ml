@@ -20,7 +20,6 @@ def calculate_energy_statistics(dataset: List[Data]):
 
     for data in dataset:
         # Compatibility check for energy targets
-        # IS2RE targets are typically stored as y_init and y_relaxed
         yi = getattr(data, 'y_init', None)
         yr = getattr(data, 'y_relaxed', None)
 
@@ -29,7 +28,7 @@ def calculate_energy_statistics(dataset: List[Data]):
         if yr is None: yr = getattr(data, '_store', {}).get('y_relaxed', None)
 
         if yi is not None and yr is not None:
-            # Energies are usually scalars or 1-element tensors
+            # Energies are scalars or 1-element tensors
             val_init = yi.item() if torch.is_tensor(yi) else yi
             val_relaxed = yr.item() if torch.is_tensor(yr) else yr
             
@@ -95,10 +94,3 @@ def perform_energy_eda(dataset: List[Data]):
     print(f"Relaxed Energy Range: [{np.min(y_relaxed):.2f}, {np.max(y_relaxed):.2f}] eV")
     print(f"Avg Relaxation 'Drop': {np.mean(deltas):.4f} eV")
     print(f"Std Dev of Targets: {np.std(y_relaxed):.4f} eV")
-    
-    print("\n--- Model Training Insights ---")
-    print("1. Target Scale: If your energy values are large (e.g., hundreds of eV),")
-    print("   consider using 'Mean/Std Normalization' or 'Subtracting the mean' for the loss.")
-    print("2. Delta Analysis: The mean delta shows how much 'information' is gained")
-    print("   by the relaxation. If the delta is very small, the initial structure")
-    print("   is already very close to the minimum.")

@@ -137,6 +137,6 @@ def visualize_interactive_relaxation(dataset, sample_idx=0):
     
     # Labels
     print(f"Interactive View for Sample {sample_idx}")
-    print("Legend: Grey=Catalyst | Red(Transparent)=Initial Adsorbate | Blue=Relaxed Adsorbate | Yellow Line=Movement")
+    print("Grey=Catalyst | Red(Transparent)=Initial Adsorbate | Blue=Relaxed Adsorbate | Yellow Line=Movement")
     
     return view

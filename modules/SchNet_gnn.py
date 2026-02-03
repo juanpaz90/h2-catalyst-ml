@@ -91,7 +91,7 @@ def get_model_output(model, batch):
     # Pool the node-level energies into a system-level energy
     return global_mean_pool(h, batch.batch)
 
-def train_one_epoch(model, loader, optimizer, criterion, device, mean_energy=0.0):
+def train_one_epoch(model, loader, optimizer, criterion, device, mean_energy):
     model.train()
     total_loss = 0
     
@@ -112,7 +112,7 @@ def train_one_epoch(model, loader, optimizer, criterion, device, mean_energy=0.0
         
     return total_loss / len(loader.dataset)
 
-def validate(model, loader, criterion, device, mean_energy=0.0):
+def validate(model, loader, criterion, device, mean_energy):
     model.eval()
     total_loss = 0
     with torch.no_grad():

@@ -53,7 +53,7 @@ def get_predictions_and_targets(model, loader, device, predict_fn, mean_energy=-
 
 def plot_parity_results(preds, targets, title="Parity Plot"):
     """
-    Generates a Parity Plot (Predicted vs Ground Truth).
+    Generates a Parity Plot (Predicted vs Real).
     Ideally, all points should lie on the diagonal red line.
     """
     plt.figure(figsize=(8, 8))
@@ -67,7 +67,7 @@ def plot_parity_results(preds, targets, title="Parity Plot"):
     mae = np.mean(np.abs(preds - targets))
     
     plt.title(f'{title}\nMean Absolute Error: {mae:.4f} eV', fontsize=14)
-    plt.xlabel('Ground Truth Relaxed Energy (eV)', fontsize=12)
+    plt.xlabel('Real Relaxed Energy (eV)', fontsize=12)
     plt.ylabel('Model Predicted Energy (eV)', fontsize=12)
     plt.legend()
     plt.grid(True, alpha=0.3)
@@ -114,5 +114,5 @@ def summarize_model_metrics(preds, targets, set_name="Validation"):
     print(f"Root Mean Sq. Error (RMSE): {rmse:.4f} eV")
     print(f"R-squared (R²):             {r2:.4f}")
     print(f"Median Absolute Error:      {np.median(abs_errors):.4f} eV")
-    print(f"90th Percentile Error:      {np.percentile(abs_errors, 90):.4f} eV")
+    # print(f"90th Percentile Error:      {np.percentile(abs_errors, 90):.4f} eV")
     print("-" * 45)
