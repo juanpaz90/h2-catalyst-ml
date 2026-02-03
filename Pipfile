@@ -3,6 +3,11 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 name = "pypi"
 
+[[source]]
+url = "https://download.pytorch.org/whl/cu128"
+verify_ssl = true
+name = "pytorch"
+
 [dev-packages]
 pytest = "*"
 pytest-cov = "*"
@@ -21,11 +26,13 @@ pandas = "*"
 seaborn = "*"
 numpy = "*"
 lmdb = "*"
-torch = "*"
-scikit-learn = "*"
 matplotlib = "*"
-torch-geometric = "*"
 ase = "*"
+py3Dmol = "*"
+torch = "*"
+torchvision = "*"
+torchsummary = "*"
+tensorboard = "*"
 
 [requires]
 python_version = "3.12"
