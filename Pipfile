@@ -16,6 +16,7 @@ pytest-mock = "*"
 pylint = "*"
 coverage = "*"
 autopep8 = "*"
+ipykernel = "*"
 
 [packages]
 python-dotenv = "==0.19.2"
@@ -33,6 +34,8 @@ torch = "*"
 torchvision = "*"
 torchsummary = "*"
 tensorboard = "*"
+ipykernel = "*"
+torch-geometric = "*"
 
 [requires]
 python_version = "3.12"
