@@ -2,56 +2,89 @@ import torch
 import torch.nn as nn
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import SchNet, global_mean_pool
+from torch_geometric.data import Data
 from tqdm import tqdm
+# from modules.load_data_integrity import fix_pyg_data
 import numpy as np
+import lmdb
+import pickle
+import os
 
-# Re-using the fix from Phase 1 to ensure runtime compatibility with older OCP objects
+
 def fix_pyg_data(data_obj):
     from torch_geometric.data import Data
     
-    # Extract the internal dictionary regardless of whether it's a legacy Data object or a dict
-    if hasattr(data_obj, '_store'):
-        d = dict(data_obj._store)
-    elif hasattr(data_obj, '__dict__'):
-        d = data_obj.__dict__
-    else:
-        d = data_obj
-
-    attrs = {}
-    for k, v in d.items():
-        if k in ['_store', '__parameters__', '_edge_index', '_pos', '_face']: 
+    if isinstance(data_obj, Data) and not hasattr(data_obj, '__dict__'):
+        return data_obj
+        
+    data_dict = data_obj.__dict__ if hasattr(data_obj, '__dict__') else data_obj
+    new_data = Data()
+    
+    for key, value in data_dict.items():
+        if key in ['_store', '__parameters__']: # Handle specific OCP internal attributes that shouldn't be top-level
             continue
-            
-        if isinstance(v, (np.ndarray, list, torch.Tensor)):
-            t = torch.tensor(v) if not isinstance(v, torch.Tensor) else v
-            
-            if k in ['atomic_numbers', 'edge_index', 'natoms', 'tags']:
-                t = t.long()
+                     
+        if isinstance(value, (np.ndarray, list, torch.Tensor)): # Ensure all structural attributes remain as tensors
+            tensor_val = torch.tensor(value) if isinstance(value, (np.ndarray, list)) else value
+                         
+            # Specifically handle long vs float for OCP attributes
+            if key in ['atomic_numbers', 'edge_index', 'natoms', 'tags']:
+                setattr(new_data, key, tensor_val.long())
             else:
-                t = t.float()
-            
-            if k in ['atomic_numbers', 'tags'] and t.dim() > 1:
-                t = t.squeeze()
-                
-            attrs[k] = t
+                setattr(new_data, key, tensor_val.float())
         else:
-            attrs[k] = v
+            setattr(new_data, key, value)
+            
+    return new_data
 
-    return Data(**attrs)
 
-class OCPDataset(torch.utils.data.Dataset):
+class OCPLmdbDataset(torch.utils.data.Dataset):
     """
-    Modular wrapper to handle pre-loaded data variables and apply PyG version fixes.
+    Directly reads PyG Data objects from OCP LMDB files.
     """
-    def __init__(self, raw_dataset):
-        self.dataset = raw_dataset
+    def __init__(self, lmdb_path):
+        super().__init__()
+        assert os.path.isfile(lmdb_path), f"LMDB file not found: {lmdb_path}"
+        self.lmdb_path = lmdb_path
+        
+        # Open LMDB environment
+        self.env = lmdb.open(
+            self.lmdb_path,
+            subdir=False,
+            readonly=True,
+            lock=False,
+            readahead=False,
+            meminit=False
+        )
+        
+        # Read the length from LMDB metadata when available, otherwise infer it from numeric keys.
+        with self.env.begin() as txn:
+            length_value = txn.get(b'length')
+            if length_value is not None:
+                self.length = int(length_value.decode('utf-8'))
+            else:
+                numeric_keys = []
+                for key, _ in txn.cursor():
+                    try:
+                        numeric_keys.append(int(key.decode('utf-8')))
+                    except (ValueError, UnicodeDecodeError):
+                        continue
+
+                if not numeric_keys:
+                    raise ValueError(f"Could not infer dataset length from LMDB: {lmdb_path}")
+
+                self.length = max(numeric_keys) + 1
 
     def __len__(self):
-        return len(self.dataset)
+        return self.length
 
     def __getitem__(self, idx):
-        data = self.dataset[idx]
-        return fix_pyg_data(data)
+        with self.env.begin() as txn:
+            # OCP stores keys as byte-encoded strings of the index
+            datapoint_pickled = txn.get(str(idx).encode('utf-8'))
+            data = pickle.loads(datapoint_pickled)
+            return fix_pyg_data(data)
+
 
 def initialize_model(device, cutoff=6.0):
     """
@@ -66,30 +99,43 @@ def initialize_model(device, cutoff=6.0):
     ).to(device)
     return model
 
+
 def get_model_output(model, batch):
     """
     Bypasses SchNet.forward() to avoid the torch-cluster/radius_graph dependency.
     Manually calculates energy using the existing edge_index from the dataset.
+    Incorporates Periodic Boundary Conditions (PBC) via cell & cell_offsets.
     """
+
     # 1. Get initial embeddings for atomic numbers
     h = model.embedding(batch.atomic_numbers)
+    row, col = batch.edge_index
+
+    # 2. Map each edge to its parent graph in the batch / Calculate structural shift across periodic boundaries
+    edge_batch = batch.batch[row] 
     
-    # 2. Calculate edge distances manually for the existing edge_index
-    edge_index = batch.edge_index
-    dist = torch.norm(batch.pos[edge_index[0]] - batch.pos[edge_index[1]], dim=-1)
+    # 3. Extract the 3x3 cell matrix for each edge [E, 3, 3]
+    cells = batch.cell[edge_batch] 
+
+    # 4. Multiply cell_offsets [E, 3] by the cell matrices to get physical shift [E, 3]
+    offsets = batch.cell_offsets.float()
+    shift = (offsets.unsqueeze(-1) * cells).sum(dim=1) 
+    
+    # 5. Calculate true distance: norm(pos_row - pos_col + periodic_shift)
+    dist = torch.norm(batch.pos[row] - batch.pos[col] + shift, dim=-1)
+    
     edge_attr = model.distance_expansion(dist)
     
-    # 3. Pass through interaction blocks
     for interaction in model.interactions:
-        h = h + interaction(h, edge_index, dist, edge_attr)
+        h = h + interaction(h, batch.edge_index, dist, edge_attr)
         
-    # 4. Final MLP and global pooling to get scalar energy per system
     h = model.lin1(h)
     h = model.act(h)
     h = model.lin2(h)
     
     # Pool the node-level energies into a system-level energy
     return global_mean_pool(h, batch.batch)
+
 
 def train_one_epoch(model, loader, optimizer, criterion, device, mean_energy):
     model.train()
@@ -102,6 +148,7 @@ def train_one_epoch(model, loader, optimizer, criterion, device, mean_energy):
         # Using the custom output function to bypass forward() and radius_graph
         out = get_model_output(model, batch)
         
+        # IS2RE Target: Relaxed Energy (y_relaxed)
         target = batch.y_relaxed.view(-1) - mean_energy
         
         loss = criterion(out.view(-1), target)
@@ -111,6 +158,7 @@ def train_one_epoch(model, loader, optimizer, criterion, device, mean_energy):
         total_loss += loss.item() * batch.num_graphs
         
     return total_loss / len(loader.dataset)
+
 
 def validate(model, loader, criterion, device, mean_energy):
     model.eval()
@@ -125,7 +173,8 @@ def validate(model, loader, criterion, device, mean_energy):
             total_loss += loss.item() * batch.num_graphs
     return total_loss / len(loader.dataset)
 
-def configure_and_run_training(train_data, val_data, epochs=15, batch_size=32, lr=0.001):
+
+def configure_and_run_training(train_lmdb_path, val_lmdb_path, epochs, batch_size, lr):
     """
     Main training configuration and execution.
     Returns:
@@ -140,8 +189,11 @@ def configure_and_run_training(train_data, val_data, epochs=15, batch_size=32, l
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Starting Training on: {device}")
 
-    train_loader = DataLoader(OCPDataset(train_data), batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(OCPDataset(val_data), batch_size=batch_size)
+    train_dataset = OCPLmdbDataset(train_lmdb_path)
+    val_dataset = OCPLmdbDataset(val_lmdb_path)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size)
 
     model = initialize_model(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -156,12 +208,10 @@ def configure_and_run_training(train_data, val_data, epochs=15, batch_size=32, l
         factor=0.5, 
         patience=2
     )
-
     best_val_mae = float('inf')
     
     # Track metrics for visualization
-    train_maes = []
-    val_maes = []
+    train_maes, val_maes = [], []
 
     for epoch in range(epochs):
         train_mae = train_one_epoch(model, train_loader, optimizer, criterion, device, MEAN_TARGET)
@@ -169,7 +219,6 @@ def configure_and_run_training(train_data, val_data, epochs=15, batch_size=32, l
         
         train_maes.append(train_mae)
         val_maes.append(val_mae)
-        
         scheduler.step(val_mae)
         
         print(f"Epoch {epoch+1:02d} | Train MAE: {train_mae:.4f} eV | Val MAE: {val_mae:.4f} eV")

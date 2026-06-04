@@ -3,14 +3,19 @@
 # --------
 
 import os
-import lmdb
 import pickle
+from typing import List, Optional, Any
+
+import lmdb
 import torch
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
+from torch.utils.data import Dataset
 from torch_geometric.data import Data
 
-def fix_pyg_data(data_object):
+
+def fix_pyg_data(data_object: Any) -> Data:
     """
     Solves legacy PyG compatibility issues by reconstructing the Data object.
     The OCP dataset may contain objects created with older torch_geometric versions.
@@ -59,16 +64,18 @@ def fix_pyg_data(data_object):
             
     return new_data
 
-def load_and_validate_dataset(db_path, num_samples=None):
+
+def load_and_validate_dataset(db_path: str, num_samples: Optional[int] = None) -> List[Data]:
     """
-    Loads LMDB data and returns a list of fixed, validated PyG Data objects.
+    Eagerly loads LMDB data and returns a list of fixed, validated PyG Data objects.
+    MUCHO OJO: Only use this for EDA or small subsets. For full training, use OCPLMDBDataset.
     
-    Parameters:
-    db_path: Path to the LMDB file.
-    num_samples: Number of samples to load (default: all).
+    Args:
+        db_path (str): Path to the LMDB file.
+        num_samples (Optional[int]): Number of samples to load. If None, loads all.
     
     Returns:
-    list: Validated torch_geometric.data.Data objects.
+        List[Data]: A list of validated torch_geometric.data.Data objects.
     """
     if not os.path.exists(db_path):
         raise FileNotFoundError(f"Database not found at: {db_path}")
@@ -110,22 +117,45 @@ def load_and_validate_dataset(db_path, num_samples=None):
     print(f"Successfully loaded {len(data_list)} validated samples.")
     return data_list
 
-# def check_structural_integrity(data_list):
-#     """
-#     Verifies that the tensors are in the correct format for OCP tasks.
-#     """
-#     if not data_list:
-#         print("Dataset is empty.")
-#         return False
-        
-#     sample = data_list[0]
-#     required_keys = ['pos', 'atomic_numbers', 'tags', 'edge_index']
-    
-#     missing = [k for k in required_keys if not hasattr(sample, k)]
-    
-#     if missing:
-#         print(f"Structural Integrity Failed: Missing keys {missing}")
-#         return False
-        
-#     print("Structural Integrity Passed: All OCP core tensors found and fixed.")
-#     return True
+
+def load_data_as_df(db_path: str, num_samples) -> pd.DataFrame:
+    """
+    Args:
+        db_path: Path to the LMDB database
+        num_samples (optional): Number of samples to load. If None, load all samples.
+
+    Returns:
+        pandas.DataFrame
+    """
+    if not os.path.exists(db_path):
+        raise FileNotFoundError(f"Database not found at: {db_path}")
+
+    env = lmdb.open(db_path, subdir=False, readonly=True, lock=False)
+    data_items = []
+
+    with env.begin() as txn:
+        cursor = txn.cursor()
+        total_count = env.stat()['entries']
+        pbar = tqdm(total=num_samples if num_samples else total_count, desc="Loading data", disable=False)
+
+        for idx, (key, value) in enumerate(cursor):
+            if num_samples is not None and idx >= num_samples:
+                break
+
+            data_object = pickle.loads(value)
+            item = {}
+            data_dict = data_object.__dict__
+
+            # Extract all available keys
+            for k in data_dict:
+                if isinstance(data_dict.get(k), torch.Tensor):
+                    item[k] = data_dict.get(k).numpy()
+                else:
+                    item[k] = data_dict.get(k)
+
+            data_items.append(item)
+            pbar.update(1)
+        pbar.close()
+
+    data_as_df = pd.DataFrame(data_items)
+    return data_as_df

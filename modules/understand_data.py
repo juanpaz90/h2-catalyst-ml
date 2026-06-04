@@ -8,8 +8,7 @@ from ase import Atoms
 from ase.visualize.plot import plot_atoms
 from ase.data import chemical_symbols
 from ase.data.colors import jmol_colors
-from torch_geometric.data import Data
-from modules.data_integrity import fix_pyg_data
+from modules.load_data_integrity import fix_pyg_data
 
 
 def get_lmdb_sample(lmdb_path, index):
@@ -36,7 +35,6 @@ def get_lmdb_sample(lmdb_path, index):
             return None
             
         data_obj = pickle.loads(data_bytes)
-
     return fix_pyg_data(data_obj)
 
 
@@ -93,7 +91,7 @@ def compare_samples(lmdb_path, idx1, idx2):
     Loads two samples, prints a side-by-side comparison of their attributes,
     and visualizes their structures.
     """
-    print(f"--- Comparing Samples {idx1} and {idx2} ---")
+    print(f"Comparing Samples:\nSample #{idx1} VS Sample #{idx2}")
     
     data1 = get_lmdb_sample(lmdb_path, idx1)
     data2 = get_lmdb_sample(lmdb_path, idx2)
@@ -144,13 +142,13 @@ def compare_samples(lmdb_path, idx1, idx2):
     # Plot Sample 1
     # rotation='10x,10y,0z' gives a slightly tilted view to see depth
     plot_atoms(atoms1, axarr[0], radii=0.5, rotation=('10x,45y,0z'))
-    axarr[0].set_title(f"Sample {idx1}: {atoms1.get_chemical_formula()}")
+    axarr[0].set_title(f"Sample {idx1}: {atoms1.get_chemical_formula()}", fontweight="bold")
     axarr[0].set_axis_off()
     add_legend_to_ax(axarr[0], atoms1)
     
     # Plot Sample 2
     plot_atoms(atoms2, axarr[1], radii=0.5, rotation=('10x,45y,0z'))
-    axarr[1].set_title(f"Sample {idx2}: {atoms2.get_chemical_formula()}")
+    axarr[1].set_title(f"Sample {idx2}: {atoms2.get_chemical_formula()}", fontweight="bold")
     axarr[1].set_axis_off()
     add_legend_to_ax(axarr[1], atoms2)
     

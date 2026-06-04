@@ -93,7 +93,7 @@ def visualize_and_compare_relaxations(dataset, num_samples: int):
         sid = getattr(data, 'sid', 'Unknown')
         if torch.is_tensor(sid): sid = sid.item()
         
-        fig.suptitle(f"Row ID: {idx} | System ID: {sid} | Formula: {atoms_init.get_chemical_formula()} | Ads Shift: {avg_shift:.2f} Å", fontsize=16)
+        fig.suptitle(f"Row ID: {idx} | System ID: {sid} | Formula: {atoms_init.get_chemical_formula()} | Ads Shift: {avg_shift:.2f} Å", fontsize=16, fontweight="bold")
 
         # PLOT 1: Initial State (Top-down view)
         # Use existing logic or custom colors if tags exist
@@ -106,7 +106,7 @@ def visualize_and_compare_relaxations(dataset, num_samples: int):
         else:
              plot_atoms(atoms_init, ax[0], radii=0.8, rotation=('0x,0y,0z'))
 
-        ax[0].set_title("Initial State (Top View)\nRed=Adsorbate, Grey=Catalyst")
+        ax[0].set_title("Initial State (Top View)\nRed=Adsorbate, Grey=Catalyst", fontweight="bold")
         ax[0].set_axis_off()
         
         # Add legend using reused function
@@ -138,7 +138,7 @@ def visualize_and_compare_relaxations(dataset, num_samples: int):
             plot_atoms(atoms_init, ax[1], radii=0.8, rotation=('90x,0y,0z'))
             ax[1].text(0.5, 0.5, "No Tags Found", ha='center')
 
-        ax[1].set_title("Relaxation Trajectory (Side View)")
+        ax[1].set_title("Relaxation Trajectory (Side View)", fontweight="bold")
         ax[1].set_axis_off()
         
         plt.tight_layout()

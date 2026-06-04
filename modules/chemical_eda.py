@@ -4,10 +4,11 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 from collections import Counter
 from ase.data import chemical_symbols
 
-
+    
 def get_symbol(atomic_num):
     """Maps atomic numbers to symbols using ASE's periodic table."""
     try:
@@ -55,11 +56,11 @@ def perform_chemical_eda(pt_tensor):
 
     # --- Plot 1: System Size Distribution ---
     # Vertical Axis: Number of Systems (Frequency)
-    plt.figure(figsize=(8, 5))
+    plt.figure(figsize=(12, 4))
     plt.hist(natoms_list, bins=min(30, len(natoms_list)), color='skyblue', edgecolor='black', alpha=0.7)
-    plt.title("Distribution of System Sizes (Complexity)")
-    plt.xlabel("Number of Atoms in the System")
-    plt.ylabel("Number of Systems (Frequency)")
+    plt.title("Distribution of System Sizes (Complexity)", fontweight="bold")
+    plt.xlabel("Number of Atoms in the System", fontweight="bold")
+    plt.ylabel("Number of Systems (Frequency)", fontweight="bold")
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.show()
 
@@ -70,9 +71,10 @@ def perform_chemical_eda(pt_tensor):
     if elem_counts:
         labels, values = zip(*elem_counts.most_common(10))
         plt.bar(labels, values, color='salmon', edgecolor='black', alpha=0.8)
-    plt.title("Top 10 Most Frequent Elements (Global)")
-    plt.xlabel("Chemical Element Symbol")
-    plt.ylabel("Total Atom Count")
+    plt.title("Top 10 Most Frequent Elements (Global)", fontweight="bold")
+    plt.xlabel("Chemical Element Symbol", fontweight="bold")
+    plt.ylabel("Total Atom Count", fontweight="bold")
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.show()
 
     # --- Plot 3: Adsorbate Composition ---
@@ -82,7 +84,7 @@ def perform_chemical_eda(pt_tensor):
     if ads_counts:
         labels, values = zip(*ads_counts.items())
         plt.pie(values, labels=labels, autopct='%1.1f%%', startangle=140, colors=plt.cm.Paired.colors)
-    plt.title("Adsorbate Chemical Diversity (Tag 2)")
+    plt.title("Adsorbate Chemical Diversity (Tag 2)", fontweight="bold")
     plt.show()
 
     # --- Plot 4: Tag Distribution (Role of atoms) ---
@@ -92,12 +94,12 @@ def perform_chemical_eda(pt_tensor):
     tag_vals = [tag_counts.get(0, 0), tag_counts.get(1, 0), tag_counts.get(2, 0)]
     colors = ['#95a5a6', '#3498db', '#2ecc71'] # Grey, Blue, Green
     plt.bar(tag_labels, tag_vals, color=colors, edgecolor='black', alpha=0.8)
-    plt.title("Distribution of Atom Roles (Tags)")
-    plt.xlabel("Atom Classification (Tag)")
-    plt.ylabel("Total Atom Count")
+    plt.title("Distribution of Atom Roles (Tags)", fontweight="bold")
+    plt.xlabel("Atom Classification (Tag)", fontweight="bold")
+    plt.ylabel("Total Atom Count", fontweight="bold")
     plt.show()
 
-    print(f"\n--- Summary ---")
+    print(f"\n---> Summary")
     print(f"Elements Discovered: {sorted([get_symbol(n) for n in unique_elements_found])}")
     print(f"Vertical Axis Meaning:")
     print(f" - System Sizes: Count of distinct catalyst+adsorbate systems.")
