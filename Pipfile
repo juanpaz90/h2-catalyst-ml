@@ -30,12 +30,14 @@ lmdb = "*"
 matplotlib = "*"
 ase = "*"
 py3Dmol = "*"
-torch = "*"
-torchvision = "*"
+torch = {version = "*", index = "pytorch"}
+torchvision = {version = "*", index = "pytorch"}
 torchsummary = "*"
 tensorboard = "*"
 ipykernel = "*"
 torch-geometric = "*"
+tabulate = "*"
+optuna = "*"
 
 [requires]
 python_version = "3.12"

@@ -1,62 +1,44 @@
+import os
+import lmdb
+import pickle
 import torch
 import torch.nn as nn
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import SchNet, global_mean_pool
-from torch_geometric.data import Data
-from tqdm import tqdm
-# from modules.load_data_integrity import fix_pyg_data
 import numpy as np
-import lmdb
-import pickle
-import os
+from tqdm import tqdm
+from modules.load_data_integrity import fix_pyg_data
 
 
-def fix_pyg_data(data_obj):
-    from torch_geometric.data import Data
-    
-    if isinstance(data_obj, Data) and not hasattr(data_obj, '__dict__'):
-        return data_obj
-        
-    data_dict = data_obj.__dict__ if hasattr(data_obj, '__dict__') else data_obj
-    new_data = Data()
-    
-    for key, value in data_dict.items():
-        if key in ['_store', '__parameters__']: # Handle specific OCP internal attributes that shouldn't be top-level
-            continue
-                     
-        if isinstance(value, (np.ndarray, list, torch.Tensor)): # Ensure all structural attributes remain as tensors
-            tensor_val = torch.tensor(value) if isinstance(value, (np.ndarray, list)) else value
-                         
-            # Specifically handle long vs float for OCP attributes
-            if key in ['atomic_numbers', 'edge_index', 'natoms', 'tags']:
-                setattr(new_data, key, tensor_val.long())
-            else:
-                setattr(new_data, key, tensor_val.float())
-        else:
-            setattr(new_data, key, value)
-            
-    return new_data
+# Baseline mean target from EDA
+MEAN_TARGET = -1.54 
 
 
 class OCPLmdbDataset(torch.utils.data.Dataset):
     """
     Directly reads PyG Data objects from OCP LMDB files.
     """
+    _env_cache = {}
+
     def __init__(self, lmdb_path):
         super().__init__()
         assert os.path.isfile(lmdb_path), f"LMDB file not found: {lmdb_path}"
-        self.lmdb_path = lmdb_path
-        
-        # Open LMDB environment
-        self.env = lmdb.open(
-            self.lmdb_path,
-            subdir=False,
-            readonly=True,
-            lock=False,
-            readahead=False,
-            meminit=False
-        )
-        
+        self.lmdb_path = os.path.abspath(lmdb_path)
+
+        # Reuse open environments to avoid LMDB "already open in this process" errors.
+        if self.lmdb_path in self._env_cache:
+            self.env = self._env_cache[self.lmdb_path]
+        else:
+            self.env = lmdb.open(
+                self.lmdb_path,
+                subdir=False,
+                readonly=True,
+                lock=False,
+                readahead=False,
+                meminit=False
+            )
+            self._env_cache[self.lmdb_path] = self.env
+
         # Read the length from LMDB metadata when available, otherwise infer it from numeric keys.
         with self.env.begin() as txn:
             length_value = txn.get(b'length')
@@ -86,15 +68,12 @@ class OCPLmdbDataset(torch.utils.data.Dataset):
             return fix_pyg_data(data)
 
 
-def initialize_model(device, cutoff=6.0):
-    """
-    Initializes a SchNet GNN.
-    """
+def initialize_base_model(device, hidden_channels, num_filters, num_interactions, num_gaussians, cutoff):
     model = SchNet(
-        hidden_channels=128,
-        num_filters=128,
-        num_interactions=6,
-        num_gaussians=50,
+        hidden_channels=hidden_channels,
+        num_filters=num_filters,
+        num_interactions=num_interactions,
+        num_gaussians=num_gaussians,
         cutoff=cutoff,
     ).to(device)
     return model
@@ -107,8 +86,12 @@ def get_model_output(model, batch):
     Incorporates Periodic Boundary Conditions (PBC) via cell & cell_offsets.
     """
 
+    # Support both plain SchNet and wrapper models (e.g., SchNetWithMHA)
+    # by selecting the inner SchNet module when present.
+    schnet_model = model.schnet if hasattr(model, 'schnet') else model
+
     # 1. Get initial embeddings for atomic numbers
-    h = model.embedding(batch.atomic_numbers)
+    h = schnet_model.embedding(batch.atomic_numbers)
     row, col = batch.edge_index
 
     # 2. Map each edge to its parent graph in the batch / Calculate structural shift across periodic boundaries
@@ -124,22 +107,24 @@ def get_model_output(model, batch):
     # 5. Calculate true distance: norm(pos_row - pos_col + periodic_shift)
     dist = torch.norm(batch.pos[row] - batch.pos[col] + shift, dim=-1)
     
-    edge_attr = model.distance_expansion(dist)
+    edge_attr = schnet_model.distance_expansion(dist)
     
-    for interaction in model.interactions:
+    for interaction in schnet_model.interactions:
         h = h + interaction(h, batch.edge_index, dist, edge_attr)
         
-    h = model.lin1(h)
-    h = model.act(h)
-    h = model.lin2(h)
+    h = schnet_model.lin1(h)
+    h = schnet_model.act(h)
+    h = schnet_model.lin2(h)
     
     # Pool the node-level energies into a system-level energy
     return global_mean_pool(h, batch.batch)
 
 
-def train_one_epoch(model, loader, optimizer, criterion, device, mean_energy):
+def train_one_epoch(model, loader, optimizer, criterion, device, mean_energy, ewt_threshold=0.02):
+    # ewt_threshold=0.02 ==> threshold for Chemical Accuracy.
     model.train()
     total_loss = 0
+    total_ewt = 0
     
     for batch in tqdm(loader, desc="Training Epoch"):
         batch = batch.to(device)
@@ -156,13 +141,17 @@ def train_one_epoch(model, loader, optimizer, criterion, device, mean_energy):
         optimizer.step()
         
         total_loss += loss.item() * batch.num_graphs
-        
-    return total_loss / len(loader.dataset)
+        total_ewt += (torch.abs(out.view(-1) - target) <= ewt_threshold).sum().item()
+
+    mae = total_loss / len(loader.dataset)
+    ewt = (total_ewt / len(loader.dataset)) * 100
+    return mae, ewt
 
 
-def validate(model, loader, criterion, device, mean_energy):
+def validate(model, loader, criterion, device, mean_energy, ewt_threshold=0.02):
     model.eval()
     total_loss = 0
+    total_ewt = 0
     with torch.no_grad():
         for batch in loader:
             batch = batch.to(device)
@@ -171,10 +160,25 @@ def validate(model, loader, criterion, device, mean_energy):
             target = batch.y_relaxed.view(-1) - mean_energy
             loss = criterion(out.view(-1), target)
             total_loss += loss.item() * batch.num_graphs
-    return total_loss / len(loader.dataset)
+            total_ewt += (torch.abs(out.view(-1) - target) <= ewt_threshold).sum().item()
+    
+    mae = total_loss / len(loader.dataset)
+    ewt = (total_ewt / len(loader.dataset)) * 100
+    return mae, ewt
 
 
-def configure_and_run_training(train_lmdb_path, val_lmdb_path, epochs, batch_size, lr):
+def configure_base_and_run_training(train_lmdb_path, 
+                                    val_lmdb_path, 
+                                    epochs, 
+                                    batch_size, 
+                                    lr, 
+                                    hidden_channels, 
+                                    num_filters, 
+                                    num_interactions, 
+                                    num_gaussians, 
+                                    cutoff, 
+                                    early_stop_patience
+                                    ):
     """
     Main training configuration and execution.
     Returns:
@@ -195,12 +199,9 @@ def configure_and_run_training(train_lmdb_path, val_lmdb_path, epochs, batch_siz
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size)
 
-    model = initialize_model(device)
+    model = initialize_base_model(device, hidden_channels, num_filters, num_interactions, num_gaussians, cutoff)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.L1Loss() 
-    
-    # Baseline mean target from EDA
-    MEAN_TARGET = -1.54 
+    criterion = nn.L1Loss() # L1Loss is the exact mathematical calculation of MAE, so we keep it.
     
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, 
@@ -211,38 +212,32 @@ def configure_and_run_training(train_lmdb_path, val_lmdb_path, epochs, batch_siz
     best_val_mae = float('inf')
     
     # Track metrics for visualization
-    train_maes, val_maes = [], []
+    epochs_no_improve = 0 # Counter for early stopping
+    train_maes, val_maes, train_ewts, val_ewts = [], [], [], []
 
     for epoch in range(epochs):
-        train_mae = train_one_epoch(model, train_loader, optimizer, criterion, device, MEAN_TARGET)
-        val_mae = validate(model, val_loader, criterion, device, MEAN_TARGET)
+        train_mae, train_ewt = train_one_epoch(model, train_loader, optimizer, criterion, device, MEAN_TARGET)
+        val_mae, val_ewt = validate(model, val_loader, criterion, device, MEAN_TARGET)
         
         train_maes.append(train_mae)
         val_maes.append(val_mae)
+        train_ewts.append(train_ewt)
+        val_ewts.append(val_ewt)
         scheduler.step(val_mae)
         
-        print(f"Epoch {epoch+1:02d} | Train MAE: {train_mae:.4f} eV | Val MAE: {val_mae:.4f} eV")
+        print(f"Epoch {epoch+1:02d} | Train MAE: {train_mae:.4f} eV, EwT: {train_ewt:.2f}% | Val MAE: {val_mae:.4f} eV, EwT: {val_ewt:.2f}%")
         
+        # Early Stopping Logic
         if val_mae < best_val_mae:
             best_val_mae = val_mae
-            torch.save(model.state_dict(), 'best_ocp_model.pt')
+            epochs_no_improve = 0 # Reset counter
+            torch.save(model.state_dict(), 'SchNet_base_model.pt')
             print("Checkpoint saved.")
-
-    # Generate final predictions and targets for visualization functions
-    model.eval()
-    preds = []
-    targets = []
-    with torch.no_grad():
-        for batch in val_loader:
-            batch = batch.to(device)
-            out = get_model_output(model, batch)
-            # De-normalize: Add back the mean energy subtracted during training
-            p = out.view(-1).cpu().numpy() + MEAN_TARGET
-            t = batch.y_relaxed.view(-1).cpu().numpy()
-            preds.extend(p.tolist())
-            targets.extend(t.tolist())
+        else:
+            epochs_no_improve += 1
+            print(f"No improvement for {epochs_no_improve} epoch(s).")
+            if epochs_no_improve >= early_stop_patience:
+                print(f"Early stopping triggered after {epoch+1} epochs!")
+                break
     
-    preds = np.array(preds)
-    targets = np.array(targets)
-
-    return model, train_maes, val_maes, val_loader, device, preds, targets
+    return model, train_maes, val_maes, train_ewts, val_ewts, val_loader, device

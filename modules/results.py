@@ -1,5 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
+from modules.SchNet_Base import *
 
 
 def plot_training_curves(train_maes, val_maes):
@@ -68,24 +70,58 @@ def plot_error_distribution(preds, targets):
     plt.show()
 
 
-def summarize_model_metrics(preds, targets, model):
+
+def get_predictions(model, val_loader, device, is_mha=False):
     """
-    Prints a detailed numerical summary of the model performance based on raw outputs.
+    Generate final predictions and targets for visualization functions
     """
+
+    MEAN_TARGET = -1.54  # Baseline mean target from EDA
+
+    model.eval()
+    preds = []
+    targets = []
+
+    with torch.no_grad():
+        for batch in val_loader:
+            batch = batch.to(device)
+
+            if is_mha:
+                out = model(batch)
+            else:
+                out = get_model_output(model, batch)
+
+            # De-normalize: Add back the mean energy subtracted during training
+            p = out.view(-1).cpu().numpy() + MEAN_TARGET
+            t = batch.y_relaxed.view(-1).cpu().numpy()
+            
+            preds.extend(p.tolist())
+            targets.extend(t.tolist())
+    
+    preds = np.array(preds)
+    targets = np.array(targets)
+
+    return preds, targets
+
+
+def print_evaluation_table(preds, targets, ewt_threshold=0.02):
+    """ Calculates metrics and prints a formatted ASCII table """
     errors = preds - targets
     abs_errors = np.abs(errors)
     
     mae = np.mean(abs_errors)
     rmse = np.sqrt(np.mean(errors**2))
-    r2 = 1 - (np.sum(errors**2) / np.sum((targets - np.mean(targets))**2))
+    ewt_percentage = (np.sum(abs_errors <= ewt_threshold) / len(targets)) * 100
     
-    print(f"\n>> Performance Summary - Validation <<")
-    print(f"Model: {model}\n")
-    print("-" * 45)
-    print(f"Total Samples:              {len(targets)}")
-    print(f"Mean Absolute Error (MAE):  {mae:.4f} eV")
-    # print(f"Root Mean Sq. Error (RMSE): {rmse:.4f} eV")                       ----> NOT USEFUL
-    # print(f"R-squared (R²):             {r2:.4f}")                            ----> NOT USEFUL
-    # print(f"Median Absolute Error:      {np.median(abs_errors):.4f} eV")      ----> NOT USEFUL
-    # print(f"90th Percentile Error:      {np.percentile(abs_errors, 90):.4f} eV")
-    print("-" * 45)
+    print("\n" + "="*55)
+    print(f"{'>> FINAL MODEL EVALUATION RESULTS <<':^55}")
+    print("="*55)
+    print(f"| {'Metric':<30} | {'Value':<18} |")
+    print(f"|{'-'*32}|{'-'*20}|")
+    print(f"| {'Total Systems Evaluated':<30} | {len(targets):<18} |")
+    print(f"| {'Mean Absolute Error (MAE)':<30} | {mae:<15.4f} eV |")
+    print(f"| {'Energy within Threshold (EwT)':<30} | {ewt_percentage:<17.2f}% |")
+    # print(f"| {'Root Mean Sq. Error':<25} | {rmse:<15.4f} eV |")
+    # print(f"| {'Median Absolute Error':<25} | {np.median(abs_errors):<15.4f} eV |")
+    print("="*55 + "\n")
+    
