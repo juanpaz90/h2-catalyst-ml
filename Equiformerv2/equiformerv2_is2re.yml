@@ -1,0 +1,24 @@
+trainer: energy
+
+dataset:
+  train:
+    src: data/is2re/100k/train/
+  val:
+    src: data/is2re/all/val_id/
+
+model:
+  name: equiformer_v2
+  num_layers: 12
+  sphere_channels: 128
+  attn_hidden_channels: 128
+  num_heads: 8
+  max_neighbors: 20
+  cutoff: 6.0
+  # TODO review more hyperparameters
+
+optim:
+  batch_size: 16 # Per GPU, with 8 GPUs, effective batch size is 128
+  eval_batch_size: 16
+  optimizer: AdamW
+  lr_initial: 0.0002
+  max_epochs: 50

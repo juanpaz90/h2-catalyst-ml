@@ -38,6 +38,9 @@ ipykernel = "*"
 torch-geometric = "*"
 tabulate = "*"
 optuna = "*"
+torchinfo = "*"
+torchviz = "*"
+fairchem-core = "*"
 
 [requires]
 python_version = "3.12"

@@ -6,6 +6,8 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 import numpy as np
 
+from modules.SchNet_Base import OCPLmdbDataset
+
 class GaussianSmearing(nn.Module):
     """Expands distances into a Gaussian basis."""
     def __init__(self, start=0.0, stop=6.0, num_gaussians=50):
@@ -106,7 +108,7 @@ class GemNetOC_GNN(nn.Module):
         energy_pred = self.out_net(x_pooled)
         return energy_pred.squeeze(-1)
 
-def configure_and_run_gemnet_training(train_data, val_data, epochs=20, batch_size=32, lr=0.0005):
+def configure_and_run_gemnet_training(train_data_path, val_data_path, epochs=20, batch_size=32, lr=0.0005):
     """
     Configures DataLoaders, initializes GemNetOC_GNN, trains the model, 
     and returns variables formatted exactly like the baseline modules.
@@ -115,9 +117,12 @@ def configure_and_run_gemnet_training(train_data, val_data, epochs=20, batch_siz
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
 
+    train_dataset = OCPLmdbDataset(train_data_path)
+    val_dataset = OCPLmdbDataset(val_data_path)
+
     # 2. Setup DataLoaders
-    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     # 3. Initialize Model, Optimizer, Scheduler, and Loss
     model = GemNetOC_GNN(hidden_channels=128, num_blocks=4).to(device)

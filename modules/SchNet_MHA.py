@@ -4,7 +4,7 @@ from torch_geometric.loader import DataLoader
 from torch_geometric.nn import SchNet, global_mean_pool
 from torch_geometric.utils import to_dense_batch
 from tqdm import tqdm
-from modules.SchNet_Base import OCPLmdbDataset
+from modules.load_data_integrity import OCPLmdbDataset
 
 
 # Baseline mean target from EDA
@@ -111,6 +111,7 @@ def validate(model, loader, criterion, device, mean_energy, ewt_threshold=0.02):
     mae = total_loss / len(loader.dataset)
     ewt = (total_ewt / len(loader.dataset)) * 100 
     return mae, ewt
+
 
 def configure_MHA_and_run_training(train_lmdb_path,
                                val_lmdb_path, 

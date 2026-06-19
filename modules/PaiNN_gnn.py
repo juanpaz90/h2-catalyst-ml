@@ -6,41 +6,8 @@ from torch_geometric.nn import global_mean_pool
 from tqdm import tqdm
 import numpy as np
 
-# --- 1. Data Handling & Compatibility Fixes ---
+from modules.SchNet_Base import OCPLmdbDataset
 
-def fix_pyg_data(data_obj):
-    """Ensures legacy OCP Data objects are compatible with modern PyG."""
-    from torch_geometric.data import Data
-    if hasattr(data_obj, '_store'):
-        d = dict(data_obj._store)
-    elif hasattr(data_obj, '__dict__'):
-        d = data_obj.__dict__
-    else:
-        d = data_obj
-
-    attrs = {}
-    for k, v in d.items():
-        if k in ['_store', '__parameters__', '_edge_index', '_pos', '_face']: 
-            continue
-        if isinstance(v, (np.ndarray, list, torch.Tensor)):
-            t = torch.tensor(v) if not isinstance(v, torch.Tensor) else v
-            t = t.long() if k in ['atomic_numbers', 'edge_index', 'natoms', 'tags'] else t.float()
-            if k in ['atomic_numbers', 'tags'] and t.dim() > 1: t = t.squeeze()
-            attrs[k] = t
-        else:
-            attrs[k] = v
-    return Data(**attrs)
-
-class OCPDataset(torch.utils.data.Dataset):
-    """Wrapper for IS2RE datasets."""
-    def __init__(self, raw_dataset):
-        self.dataset = raw_dataset
-    def __len__(self):
-        return len(self.dataset)
-    def __getitem__(self, idx):
-        return fix_pyg_data(self.dataset[idx])
-
-# --- 2. PaiNN Model Components ---
 
 class GaussianSmearing(nn.Module):
     def __init__(self, start=0.0, stop=6.0, num_gaussians=50):
@@ -158,7 +125,11 @@ def get_final_metrics(model, loader, device, mean_target):
             targets.extend(batch.y_relaxed.view(-1).cpu().numpy())
     return np.array(preds), np.array(targets)
 
-def configure_and_run_painn_training(train_data, val_data, epochs=10, batch_size=32, lr=0.0005):
+def configure_and_run_painn_training(train_lmdb_path, 
+                                     val_lmdb_path, 
+                                     epochs=10, 
+                                     batch_size=32, 
+                                     lr=0.0005):
     """
     Main Entry Point for PaiNN Training.
     Returns model, training history, and final evaluation data.
@@ -166,8 +137,11 @@ def configure_and_run_painn_training(train_data, val_data, epochs=10, batch_size
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Initializing PaiNN on {device}...")
 
-    train_loader = DataLoader(OCPDataset(train_data), batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(OCPDataset(val_data), batch_size=batch_size)
+    train_dataset = OCPLmdbDataset(train_lmdb_path)
+    val_dataset = OCPLmdbDataset(val_lmdb_path)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size)
 
     model = PaiNN(hidden_channels=128, num_interactions=3).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)

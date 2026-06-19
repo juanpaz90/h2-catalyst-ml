@@ -1,71 +1,13 @@
-import os
-import lmdb
-import pickle
 import torch
 import torch.nn as nn
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import SchNet, global_mean_pool
-import numpy as np
 from tqdm import tqdm
-from modules.load_data_integrity import fix_pyg_data
+from modules.load_data_integrity import OCPLmdbDataset
 
 
 # Baseline mean target from EDA
 MEAN_TARGET = -1.54 
-
-
-class OCPLmdbDataset(torch.utils.data.Dataset):
-    """
-    Directly reads PyG Data objects from OCP LMDB files.
-    """
-    _env_cache = {}
-
-    def __init__(self, lmdb_path):
-        super().__init__()
-        assert os.path.isfile(lmdb_path), f"LMDB file not found: {lmdb_path}"
-        self.lmdb_path = os.path.abspath(lmdb_path)
-
-        # Reuse open environments to avoid LMDB "already open in this process" errors.
-        if self.lmdb_path in self._env_cache:
-            self.env = self._env_cache[self.lmdb_path]
-        else:
-            self.env = lmdb.open(
-                self.lmdb_path,
-                subdir=False,
-                readonly=True,
-                lock=False,
-                readahead=False,
-                meminit=False
-            )
-            self._env_cache[self.lmdb_path] = self.env
-
-        # Read the length from LMDB metadata when available, otherwise infer it from numeric keys.
-        with self.env.begin() as txn:
-            length_value = txn.get(b'length')
-            if length_value is not None:
-                self.length = int(length_value.decode('utf-8'))
-            else:
-                numeric_keys = []
-                for key, _ in txn.cursor():
-                    try:
-                        numeric_keys.append(int(key.decode('utf-8')))
-                    except (ValueError, UnicodeDecodeError):
-                        continue
-
-                if not numeric_keys:
-                    raise ValueError(f"Could not infer dataset length from LMDB: {lmdb_path}")
-
-                self.length = max(numeric_keys) + 1
-
-    def __len__(self):
-        return self.length
-
-    def __getitem__(self, idx):
-        with self.env.begin() as txn:
-            # OCP stores keys as byte-encoded strings of the index
-            datapoint_pickled = txn.get(str(idx).encode('utf-8'))
-            data = pickle.loads(datapoint_pickled)
-            return fix_pyg_data(data)
 
 
 def initialize_base_model(device, hidden_channels, num_filters, num_interactions, num_gaussians, cutoff):
@@ -240,4 +182,4 @@ def configure_base_and_run_training(train_lmdb_path,
                 print(f"Early stopping triggered after {epoch+1} epochs!")
                 break
     
-    return model, train_maes, val_maes, train_ewts, val_ewts, val_loader, device
+    return model, train_maes, val_maes, val_loader, device

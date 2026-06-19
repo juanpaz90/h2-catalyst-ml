@@ -1,7 +1,3 @@
-# EDA
-# STEP 1: Data validation and data integrity
-# --------
-
 import os
 import pickle
 from typing import List, Optional, Any
@@ -14,6 +10,60 @@ from tqdm import tqdm
 from torch.utils.data import Dataset
 from torch_geometric.data import Data
 
+
+class OCPLmdbDataset(torch.utils.data.Dataset):
+    """
+    Directly reads PyG Data objects from OCP LMDB files.
+    """
+    _env_cache = {}
+
+    def __init__(self, lmdb_path):
+        super().__init__()
+        assert os.path.isfile(lmdb_path), f"LMDB file not found: {lmdb_path}"
+        self.lmdb_path = os.path.abspath(lmdb_path)
+
+        # Reuse open environments to avoid LMDB "already open in this process" errors.
+        if self.lmdb_path in self._env_cache:
+            self.env = self._env_cache[self.lmdb_path]
+        else:
+            self.env = lmdb.open(
+                self.lmdb_path,
+                subdir=False,
+                readonly=True,
+                lock=False,
+                readahead=False,
+                meminit=False
+            )
+            self._env_cache[self.lmdb_path] = self.env
+
+        # Read the length from LMDB metadata when available, otherwise infer it from numeric keys.
+        with self.env.begin() as txn:
+            length_value = txn.get(b'length')
+            if length_value is not None:
+                self.length = int(length_value.decode('utf-8'))
+            else:
+                numeric_keys = []
+                for key, _ in txn.cursor():
+                    try:
+                        numeric_keys.append(int(key.decode('utf-8')))
+                    except (ValueError, UnicodeDecodeError):
+                        continue
+
+                if not numeric_keys:
+                    raise ValueError(f"Could not infer dataset length from LMDB: {lmdb_path}")
+
+                self.length = max(numeric_keys) + 1
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, idx):
+        with self.env.begin() as txn:
+            # OCP stores keys as byte-encoded strings of the index
+            datapoint_pickled = txn.get(str(idx).encode('utf-8'))
+            data = pickle.loads(datapoint_pickled)
+            return fix_pyg_data(data)
+        
 
 def fix_pyg_data(data_object: Any) -> Data:
     """
@@ -63,8 +113,9 @@ def fix_pyg_data(data_object: Any) -> Data:
             setattr(new_data, key, value)
             
     return new_data
+        
 
-
+# The following 2 functions were used only for EDA, nothing else. 
 def load_and_validate_dataset(db_path: str, num_samples: Optional[int] = None) -> List[Data]:
     """
     Eagerly loads LMDB data and returns a list of fixed, validated PyG Data objects.
